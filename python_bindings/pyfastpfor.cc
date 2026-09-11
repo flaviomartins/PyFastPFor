@@ -2,7 +2,7 @@
  * PyFastPFOR
  *
  * Python bindings for the FastPFOR library:
- * https://github.com/lemire/FastPFor 
+ * https://github.com/lemire/FastPFor
  *
  * This code is released under the
  * Apache License Version 2.0 http://www.apache.org/licenses/.
@@ -12,9 +12,11 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl.h>
 
 #include "headers/codecfactory.h"
 #include "headers/deltautil.h"
@@ -26,6 +28,41 @@ void exportCodecs(py::module& m);
 using namespace FastPForLib;
 
 const char * module_name = "pyfastpfor";
+
+// Reports the SIMD instruction sets the extension was actually compiled
+// with, based on preprocessor macros set by the compiler flags (see
+// setup.py:simd_flags). This reflects the build, not the running CPU.
+static std::vector<std::string> compiledSimdFeatures() {
+  std::vector<std::string> features;
+#if defined(__AVX512F__)
+  features.push_back("AVX512F");
+#endif
+#if defined(__AVX2__)
+  features.push_back("AVX2");
+#endif
+#if defined(__AVX__)
+  features.push_back("AVX");
+#endif
+#if defined(__SSE4_2__)
+  features.push_back("SSE4.2");
+#endif
+#if defined(__SSE4_1__)
+  features.push_back("SSE4.1");
+#endif
+#if defined(__SSSE3__)
+  features.push_back("SSSE3");
+#endif
+#if defined(__SSE3__)
+  features.push_back("SSE3");
+#endif
+#if defined(__SSE2__)
+  features.push_back("SSE2");
+#endif
+#if defined(__ARM_NEON) || defined(__aarch64__)
+  features.push_back("NEON");
+#endif
+  return features;
+}
 
 struct IntegerCODECWrapper {
 public:
@@ -42,7 +79,7 @@ public:
     uint32_t*       outBuff = output.mutable_data();
     size_t          compSize = outputSize;
 
-    codec_->encodeArray(inpBuff, inputSize, 
+    codec_->encodeArray(inpBuff, inputSize,
                         outBuff, compSize);
 
     return compSize;
@@ -66,10 +103,10 @@ private:
   IntegerCODEC* codec_;
 };
 
-/* 
- * PYBIND11_MODULE is a replacement for PYBIND11_PLUGIN 
+/*
+ * PYBIND11_MODULE is a replacement for PYBIND11_PLUGIN
  * introduced in Pybind 2.2. However, we don't require
- * Pybind to be >= 2.0 so we attempt to support older 
+ * Pybind to be >= 2.0 so we attempt to support older
  * Pybind versions as well.
  */
 #ifdef PYBIND11_MODULE
@@ -90,11 +127,17 @@ PYBIND11_PLUGIN(pyfastpfor) {
 
   exportCodecs(codecModule);
 
+  m.def("compiledSimdFeatures", &compiledSimdFeatures,
+    "Returns\n"
+    "----------\n"
+    "    A list of SIMD instruction sets (e.g. ['SSE4.2'] or ['NEON'])\n"
+    "    that this module was compiled with.");
+
   m.def("getCodec",
     [](const std::string & codecName) {
       // We know that FastPFor will keep this shared pointer alive forever
       // so it is safe just to reference codec
-      return py::cast(new IntegerCODECWrapper(codecName), 
+      return py::cast(new IntegerCODECWrapper(codecName),
                       py::return_value_policy::take_ownership);
     },
     py::arg("codecName"),
@@ -204,8 +247,8 @@ PYBIND11_PLUGIN(pyfastpfor) {
 
 void exportCodecs(py::module& m) {
   py::class_<IntegerCODECWrapper>(m, "IntegerCODEC")
-  .def("encodeArray", &IntegerCODECWrapper::encodeArray, 
-      py::arg("input"), py::arg("inputSize"), 
+  .def("encodeArray", &IntegerCODECWrapper::encodeArray,
+      py::arg("input"), py::arg("inputSize"),
       py::arg("output"), py::arg("outputSize"),
       "Compress input array.\n\n"
       "Parameters\n"
@@ -213,7 +256,7 @@ void exportCodecs(py::module& m) {
       "input: numpy C-style contiguous array to be compressed, e.g.:\n"
       "     input = numpy.array(range(256), dtype = np.uint32).ravel()\n"
       "inputSize: a number of integers to compress: it can be less than\n"
-      "     than the total number of integers in the numpy array.\n" 
+      "     than the total number of integers in the numpy array.\n"
       "output: numpy C-style contiguous array with compressed data, e.g.:\n"
       "     output = np.zeros(buffSize, dtype = np.uint32).ravel()\n"
       "outputSize: a capacity of the output buffer: it can be less than\n"
@@ -223,7 +266,7 @@ void exportCodecs(py::module& m) {
       "----------\n"
       "     A number of integers in the compressed output.")
   .def("decodeArray", &IntegerCODECWrapper::decodeArray,
-      py::arg("input"), py::arg("inputSize"), 
+      py::arg("input"), py::arg("inputSize"),
       py::arg("output"), py::arg("outputSize"),
       "Uncompress input array.\n\n"
       "Parameters\n"
@@ -231,7 +274,7 @@ void exportCodecs(py::module& m) {
       "input: numpy C-style contiguous array to be uncompressed, e.g.:\n"
       "     input = numpy.array(range(256), dtype = np.uint32).ravel()\n"
       "inputSize: a number of integers to compress: it can be less than\n"
-      "     than the total number of integers in the numpy array.\n" 
+      "     than the total number of integers in the numpy array.\n"
       "output: numpy C-style contiguous array with compressed data, e.g.:\n"
       "     output = np.zeros(buffSize, dtype = np.uint32).ravel()\n"
       "outputSize: a capacity of the output buffer: it can be less than\n"
@@ -243,4 +286,3 @@ void exportCodecs(py::module& m) {
       )
   ;
 }
-
